@@ -1,0 +1,10 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "deploy": {
+    "startCommand": "npm start",
+    "numReplicas": 1,
+    "restartPolicyType": "ALWAYS",
+    "healthcheckPath": "/api/config",
+    "healthcheckTimeout": 120
+  }
+}

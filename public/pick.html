@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>Joylashuvni tanlash</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    :root { --bg: #0a1830; --card: #13233f; --line: rgba(130,170,230,.16); --text: #f2f5fb; --muted: #8fa0bd; --a1: #ffa04a; --a2: #ff5a1f; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font: 600 15px/1.4 Manrope, system-ui, sans-serif; overflow: hidden; }
+    button, input { font: inherit; color: inherit; border: 0; }
+    #map { position: absolute; inset: 0; }
+    .leaflet-tile-pane { filter: invert(1) hue-rotate(185deg) brightness(.85) contrast(.92) saturate(.6); }
+    .top { position: absolute; z-index: 1000; top: calc(10px + env(safe-area-inset-top)); left: 10px; right: 10px; }
+    .hint { font-size: 13px; color: var(--muted); text-align: center; margin-bottom: 8px; text-shadow: 0 1px 4px #000; }
+    form { display: flex; gap: 6px; padding: 6px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+    form input { flex: 1; min-width: 0; background: none; outline: 0; padding: 0 8px; }
+    form button { height: 38px; padding: 0 14px; border-radius: 11px; background: rgba(255,255,255,.08); font-weight: 800; }
+    .results { margin-top: 6px; border-radius: 14px; overflow: hidden; background: var(--card); border: 1px solid var(--line); }
+    .results button { display: block; width: 100%; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); background: none; font-size: 13.5px; }
+    .results button:last-child { border-bottom: 0; }
+    /* Markazdagi belgi */
+    .center-pin { position: absolute; z-index: 900; left: 50%; top: 50%; transform: translate(-50%, -100%); pointer-events: none; transition: transform .15s; }
+    .center-pin.lift { transform: translate(-50%, -112%); }
+    .center-pin div { width: 44px; height: 44px; border-radius: 50% 50% 50% 6px; transform: rotate(-45deg); background: linear-gradient(135deg, var(--a1), var(--a2)); border: 3px solid #fff; display: grid; place-items: center; box-shadow: 0 8px 18px rgba(0,0,0,.5); }
+    .center-pin span { transform: rotate(45deg); font-size: 20px; }
+    .shadow { position: absolute; z-index: 899; left: 50%; top: 50%; width: 14px; height: 6px; margin: -3px 0 0 -7px; border-radius: 50%; background: rgba(0,0,0,.5); pointer-events: none; }
+    .fab { position: absolute; z-index: 1000; right: 12px; bottom: calc(150px + env(safe-area-inset-bottom)); width: 46px; height: 46px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); display: grid; place-items: center; color: var(--a1); box-shadow: 0 8px 20px rgba(0,0,0,.4); cursor: pointer; }
+    .panel { position: absolute; z-index: 1000; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); padding: 14px; border-radius: 20px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 -10px 30px rgba(0,0,0,.35); }
+    .addr { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .coords { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+    .ok { width: 100%; height: 50px; margin-top: 12px; border-radius: 15px; cursor: pointer; font-weight: 800; font-size: 15.5px; color: #fff; background: linear-gradient(135deg, var(--a1), var(--a2)); box-shadow: 0 10px 24px -10px rgba(255,120,40,.6); }
+    .ok:disabled { opacity: .6; }
+    .leaflet-control-attribution { background: rgba(0,0,0,.4) !important; color: #ccc !important; font-size: 10px; }
+    .leaflet-control-attribution a { color: #fff !important; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="shadow"></div>
+  <div class="center-pin" id="pin"><div><span>💈</span></div></div>
+
+  <div class="top">
+    <div class="hint" id="hint">Xaritani suring — belgi turgan joy tanlanadi</div>
+    <form id="searchForm">
+      <input id="q" type="search" placeholder="Manzilni qidirish: Chilonzor 9-kvartal…" autocomplete="off">
+      <button type="submit">Qidirish</button>
+    </form>
+    <div class="results" id="results" hidden></div>
+  </div>
+
+  <button class="fab" id="meBtn" aria-label="Mening joylashuvim">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg>
+  </button>
+
+  <div class="panel">
+    <div class="addr" id="addr">Manzil aniqlanmoqda…</div>
+    <div class="coords" id="coords"></div>
+    <button class="ok" id="okBtn">✅ Shu joyni tanlash</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script>
+  (() => {
+    const tg = window.Telegram?.WebApp;
+    const inTg = Boolean(tg?.initData || tg?.initDataUnsafe?.query_id || tg?.platform && tg.platform !== 'unknown');
+    tg?.ready(); tg?.expand();
+    try { tg?.setHeaderColor?.('#0a1830'); tg?.setBackgroundColor?.('#0a1830'); } catch {}
+    const $ = (s) => document.querySelector(s);
+    const mode = new URLSearchParams(location.search).get('mode');
+    if (mode === 'client') {
+      $('#hint').textContent = 'Turgan joyingizni belgilang — eng yaqin sartaroshlar topiladi';
+      $('#okBtn').textContent = '✅ Shu yerdaman';
+    }
+
+    const map = L.map('map', { zoomControl: false }).setView([41.3111, 69.2797], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+
+    // Manzilni aniqlash (OpenStreetMap Nominatim; sekundiga 1 tadan oshmasligi uchun kechiktiriladi)
+    let geoTimer, geoSeq = 0;
+    function update() {
+      const c = map.getCenter();
+      $('#coords').textContent = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
+      $('#addr').textContent = 'Manzil aniqlanmoqda…';
+      clearTimeout(geoTimer);
+      const seq = ++geoSeq;
+      geoTimer = setTimeout(async () => {
+        try {
+          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=uz&zoom=18&lat=${c.lat}&lon=${c.lng}`);
+          const d = await r.json();
+          if (seq !== geoSeq) return;
+          const a = d.address || {};
+          const short = [a.road || a.pedestrian || a.neighbourhood, a.house_number, a.suburb || a.city_district, a.city || a.town || a.village]
+            .filter(Boolean).join(', ');
+          $('#addr').textContent = short || d.display_name || 'Tanlangan nuqta';
+        } catch {
+          if (seq === geoSeq) $('#addr').textContent = 'Tanlangan nuqta';
+        }
+      }, 900);
+    }
+    map.on('movestart', () => $('#pin').classList.add('lift'));
+    map.on('moveend', () => { $('#pin').classList.remove('lift'); update(); });
+    update();
+
+    // Mening joylashuvim
+    function locate() {
+      const done = (lat, lon) => map.setView([lat, lon], 17);
+      const lm = tg?.LocationManager;
+      const browser = () => navigator.geolocation?.getCurrentPosition(
+        (p) => done(p.coords.latitude, p.coords.longitude),
+        () => tg?.showAlert?.("Joylashuvni aniqlab bo'lmadi. Xaritadan qo'lda tanlang yoki manzilni qidiring."),
+        { enableHighAccuracy: true, timeout: 10000 },
+      );
+      if (lm && tg.isVersionAtLeast?.('8.0')) {
+        lm.init(() => {
+          if (!lm.isLocationAvailable) return browser();
+          lm.getLocation((loc) => (loc ? done(loc.latitude, loc.longitude) : browser()));
+        });
+      } else browser();
+    }
+    $('#meBtn').addEventListener('click', locate);
+    locate();
+
+    // Qidiruv
+    $('#searchForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const q = $('#q').value.trim();
+      if (q.length < 3) return;
+      const box = $('#results');
+      box.hidden = false;
+      box.innerHTML = '<button disabled>Qidirilmoqda…</button>';
+      try {
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=uz&accept-language=uz&q=${encodeURIComponent(q)}`);
+        const list = await r.json();
+        box.innerHTML = list.length
+          ? list.map((x) => `<button data-lat="${x.lat}" data-lon="${x.lon}">📍 ${x.display_name.replace(/[<>&]/g, '')}</button>`).join('')
+          : "<button disabled>Hech narsa topilmadi — xaritadan qo'lda tanlang</button>";
+      } catch {
+        box.innerHTML = '<button disabled>Qidiruv ishlamadi</button>';
+      }
+    });
+    $('#results').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-lat]');
+      if (!b) return;
+      map.setView([Number(b.dataset.lat), Number(b.dataset.lon)], 17);
+      $('#results').hidden = true;
+      $('#q').blur();
+    });
+
+    // Tasdiqlash -> botga yuborish
+    $('#okBtn').addEventListener('click', () => {
+      const c = map.getCenter();
+      const payload = JSON.stringify({ lat: +c.lat.toFixed(6), lon: +c.lng.toFixed(6) });
+      try { tg?.HapticFeedback?.notificationOccurred('success'); } catch {}
+      if (tg?.sendData && inTg) {
+        tg.sendData(payload); // mini app yopiladi, bot joylashuvni oladi
+      } else {
+        $('#okBtn').disabled = true;
+        $('#okBtn').textContent = `Koordinata: ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
